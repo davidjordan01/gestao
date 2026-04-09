@@ -1665,7 +1665,7 @@ function setupRealtimeSync() {
 
 // ===== LOGIN =====
 
-// ===== AUTO-LOGIN VIA WIX TOKEN =====
+// ===== AUTO-LOGIN VIA WIX =====
 function doAutoLogin(colaborador) {
   state.usuario = colaborador;
   document.getElementById('loginScreen').style.display = 'none';
@@ -1678,42 +1678,41 @@ function doAutoLogin(colaborador) {
 
 function validateWixToken(tokenStr) {
   try {
-    const payload = JSON.parse(decodeURIComponent(escape(atob(tokenStr))));
+    const decoded = decodeURIComponent(escape(atob(tokenStr)));
+    const payload = JSON.parse(decoded);
     const agora = Date.now();
+    // Token válido por 10 minutos
     if (!payload.timestamp || (agora - payload.timestamp) > 10 * 60 * 1000) return null;
     const colaborador = db.usuarios.find(function(u){ return u.usuario === payload.usuario; });
     return colaborador || null;
   } catch(e) {
-    console.error('Erro token:', e);
+    console.error('Erro token Wix:', e);
     return null;
   }
 }
 
 function tryWixAutoLogin() {
   try {
-    // Método 1: URL params (fallback)
     const params = new URLSearchParams(window.location.search);
     const token = params.get('wix_token');
-    if (token) {
-      const colaborador = validateWixToken(decodeURIComponent(token));
-      if (colaborador) { doAutoLogin(colaborador); return true; }
-    }
-    return false;
+    if (!token) return false;
+    const colaborador = validateWixToken(decodeURIComponent(token));
+    if (!colaborador) return false;
+    doAutoLogin(colaborador);
+    return true;
   } catch(e) {
-    console.error('Erro auto-login URL:', e);
     return false;
   }
 }
 
-// Método 2: postMessage do Wix (principal)
+// Receber token via postMessage do Wix
 window.addEventListener('message', function(event) {
   try {
     const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
     if (!data || data.type !== 'WIX_AUTO_LOGIN') return;
+    if (state.usuario) return; // já logado
     const colaborador = validateWixToken(data.token);
-    if (colaborador && !state.usuario) {
-      doAutoLogin(colaborador);
-    }
+    if (colaborador) doAutoLogin(colaborador);
   } catch(e) {
     console.error('Erro postMessage:', e);
   }
@@ -4369,7 +4368,6 @@ function getAlertasLicencas() {
 // ===== INIT =====
 loadDB().then(() => {
   setupRealtimeSync();
-  // Tentar auto-login via token Wix — se não tiver token, mostrar login normal
   if (!tryWixAutoLogin()) {
     document.getElementById('loginScreen').style.display = 'flex';
   }
